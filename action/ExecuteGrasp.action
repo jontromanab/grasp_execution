@@ -1,0 +1,12 @@
+#goal
+grasp_execution/grasp grasp
+
+---
+
+#result
+bool success
+
+---
+
+#feedback
+geometry_msgs/Pose pose
