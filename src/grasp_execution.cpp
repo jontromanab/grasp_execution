@@ -35,7 +35,9 @@ void GraspExecution::publishGripperMarker()
   imServer->applyChanges();
   visualization_msgs::InteractiveMarker gripperMarker;
 
-  //There is a distance between the ee_link(our planning frame) and the mesh model of the robotiq_85_base_link center which is no defined in the URDF. So we are translating out gripper marker by 0.41
+  //There is a distance between the ee_link(our planning frame)
+  // and the mesh model of the robotiq_85_base_link center 
+  //which is no defined in the URDF. So we are translating out gripper marker by 0.41
   Eigen::Affine3d tf_grasp;
   tf::poseMsgToEigen(grasp_.pose, tf_grasp);
   Eigen::Affine3d translation(Eigen::Translation3d(Eigen::Vector3d(0.041,0,0)));
