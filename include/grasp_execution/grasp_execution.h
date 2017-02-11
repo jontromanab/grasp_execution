@@ -49,6 +49,8 @@ private:
 
   boost::shared_ptr<interactive_markers::InteractiveMarkerServer> imServer;
 
+  ros::Publisher gripper_pub_;
+
 
   ros::AsyncSpinner spinner;
   moveit::planning_interface::MoveGroup group;
@@ -66,6 +68,9 @@ private:
   bool generateWayPointsGrasp(grasp_execution::grasp grasp);//Creating grasp waypoints
   bool createExtraWayPoints(); //Creating middle waypoint between last waypoint and current gripper pose
   bool generatePickWayPoints(); //Creating pick way points
+
+
+  bool publishGripperMarkerMoveit(); //Visualizing gripper with joint value
 
 
 

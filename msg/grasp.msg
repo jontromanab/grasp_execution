@@ -1,2 +1,3 @@
 geometry_msgs/Pose pose
 geometry_msgs/Vector3 approach
+float32 angle

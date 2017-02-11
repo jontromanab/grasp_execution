@@ -4,6 +4,14 @@
 #include <Eigen/Eigen>
 #include <eigen_conversions/eigen_msg.h>
 
+
+
+#include<moveit/robot_model_loader/robot_model_loader.h>
+#include<moveit/robot_model/robot_model.h>
+#include<moveit/robot_model/joint_model_group.h>
+
+#include<moveit/robot_state/robot_state.h>
+
 namespace  grasp_execution{
 
 float joints_pre_nominal[] = {-0.12055318838547446, -1.9131810679104309, 1.9643177327972587, -1.6509883639374454, -1.5562078432847617, 3.0825801942323423};
@@ -16,9 +24,12 @@ GraspExecution::GraspExecution(ros::NodeHandle& node, grasp_execution::grasp gra
 {
   grasp_ = grasp;
   nh_ = node;
-  approach_pub_ = nh_.advertise<visualization_msgs::Marker> ("final_grasp", 10);
+  approach_pub_ = nh_.advertise<visualization_msgs::Marker> ("approach", 10);
   grasp_waypoints_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("grasp_waypoints",10);
   waypoints_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("pick_waypoints",10);
+
+  gripper_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("final_grasp",10);
+
   grasp_wayPoints_.clear();
   pick_wayPoints_.clear();
 
@@ -26,6 +37,91 @@ GraspExecution::GraspExecution(ros::NodeHandle& node, grasp_execution::grasp gra
   spinner.start();
   group.setPlannerId ("RRTkConfigDefault");
 }
+
+//Codes influenced by moveit_visual_tools
+bool GraspExecution::publishGripperMarkerMoveit()
+{
+  std::string ee_name = group.getEndEffector();
+  moveit::core::RobotModelConstPtr robot_model = group.getRobotModel();
+  moveit::core::RobotStatePtr robot_state_(new moveit::core::RobotState(robot_model));
+
+  //Setting the gripper joint to the openning value of the gripper
+  const std::string ee_joint = "robotiq_85_left_knuckle_joint";
+  double value = double(grasp_.angle);
+  double *valuePtr = &value;
+  robot_state_->setJointPositions(ee_joint, valuePtr);
+  robot_state_->update();
+
+  //New jointmodel group of the end effector with the openning value
+  const moveit::core::JointModelGroup* ee_jmp = robot_model->getJointModelGroup(ee_name);
+  std::string ee_group = ee_jmp->getName();
+  std::cout<<"EE group: "<<ee_group<<std::endl;
+
+  if(ee_jmp == NULL)
+  {
+    ROS_ERROR_STREAM("Unable to find joint model group with address"<<ee_jmp);
+    return false;
+  }
+
+  //maps
+  std::map<const robot_model::JointModelGroup *, visualization_msgs::MarkerArray> ee_markers_map_;
+
+  ee_markers_map_[ee_jmp].markers.clear();
+
+  const std::vector<std::string>& ee_link_names = ee_jmp->getLinkModelNames();
+  robot_state_->getRobotMarkers(ee_markers_map_[ee_jmp], ee_link_names);
+  const std::string& ee_parent_link_name = ee_jmp->getEndEffectorParentGroup().second;
+
+  Eigen::Affine3d tf_root_to_ee = robot_state_->getGlobalLinkTransform(ee_parent_link_name);
+  Eigen::Affine3d tf_ee_to_root = tf_root_to_ee.inverse();
+  Eigen::Affine3d trans_bw_poses;
+  trans_bw_poses = tf_root_to_ee * tf_ee_to_root;
+
+
+  Eigen::Affine3d grasp_tf;
+  tf::poseMsgToEigen(grasp_.pose, grasp_tf);
+
+  for(std::size_t i=0; i<ee_markers_map_[ee_jmp].markers.size();++i)
+  {
+    ee_markers_map_[ee_jmp].markers[i].header.frame_id = "/world";
+    ee_markers_map_[ee_jmp].markers[i].type = visualization_msgs::Marker::MESH_RESOURCE;
+    ee_markers_map_[ee_jmp].markers[i].mesh_use_embedded_materials = true;
+    ee_markers_map_[ee_jmp].markers[i].id = i+1;
+
+    ee_markers_map_[ee_jmp].markers[i].header.stamp = ros::Time::now();
+    ee_markers_map_[ee_jmp].markers[i].ns = "gripper_links";
+    ee_markers_map_[ee_jmp].markers[i].lifetime = ros::Duration(40.0);
+
+    if(i==1 || i==2 || i==5 || i==6 || i==9)
+    {
+      ee_markers_map_[ee_jmp].markers[i].color.r = 0.1;
+      ee_markers_map_[ee_jmp].markers[i].color.g = 0.1;
+      ee_markers_map_[ee_jmp].markers[i].color.b = 0.1;
+    }
+    else{
+      ee_markers_map_[ee_jmp].markers[i].color.r = 0.5;
+      ee_markers_map_[ee_jmp].markers[i].color.g = 0.5;
+      ee_markers_map_[ee_jmp].markers[i].color.b = 0.5;
+    }
+
+
+    ee_markers_map_[ee_jmp].markers[i].color.a = 1.0;
+
+    Eigen::Affine3d link_marker;
+    tf::poseMsgToEigen(ee_markers_map_[ee_jmp].markers[i].pose, link_marker);
+
+    Eigen::Affine3d tf_link_in_root =  tf_ee_to_root * link_marker;
+
+    geometry_msgs::Pose new_marker_pose;
+    tf::poseEigenToMsg( grasp_tf * tf_link_in_root  , new_marker_pose );
+    ee_markers_map_[ee_jmp].markers[i].pose = new_marker_pose;
+  }
+
+  sleep(1);
+  gripper_pub_.publish(ee_markers_map_[ee_jmp]);
+
+}
+
 
 void GraspExecution::publishGripperMarker()
 {
@@ -35,9 +131,8 @@ void GraspExecution::publishGripperMarker()
   imServer->applyChanges();
   visualization_msgs::InteractiveMarker gripperMarker;
 
-  //There is a distance between the ee_link(our planning frame)
-  // and the mesh model of the robotiq_85_base_link center 
-  //which is no defined in the URDF. So we are translating out gripper marker by 0.41
+  //There is a distance between the ee_link(our planning frame) and the mesh model of the robotiq_85_base_link center which is no defined
+  //in the URDF. So we are translating out gripper marker by 0.41
   Eigen::Affine3d tf_grasp;
   tf::poseMsgToEigen(grasp_.pose, tf_grasp);
   Eigen::Affine3d translation(Eigen::Translation3d(Eigen::Vector3d(0.041,0,0)));
@@ -354,7 +449,8 @@ bool GraspExecution::goToGrasp()
   //executeJointTargetNominal();
   openGripper();
   publishApproachMarker();
-  publishGripperMarker ();
+  //publishGripperMarker (); //can be used when the grasp msg does not have an openning parameter
+  publishGripperMarkerMoveit();
   generateWayPointsGrasp(grasp_);
   publishGraspWayPointsMarker();
   double score = executeWayPoints(grasp_wayPoints_);
@@ -388,4 +484,3 @@ bool GraspExecution::place()
 
 
 }//end namespace
-
