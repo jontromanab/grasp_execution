@@ -144,17 +144,3 @@ target_link_libraries(grasp_execution_client ${catkin_LIBRARIES})
 add_dependencies(grasp_execution_client ${grasp_execution_EXPORTED_TARGETS})
 
 
-add_executable(gs_node src/gs_node.cpp)
-add_dependencies(gs_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(gs_node grasp_execution  ${catkin_LIBRARIES})
-
-
-
-add_executable(listen_check src/listen_check.cpp)
-add_dependencies(listen_check ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(listen_check  ${catkin_LIBRARIES})
-
-
-add_executable(marker_publisher src/marker_publisher.cpp)
-add_dependencies(marker_publisher ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(marker_publisher create_gripper_marker  ${catkin_LIBRARIES})
