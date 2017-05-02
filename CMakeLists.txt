@@ -27,6 +27,7 @@ find_package(Boost REQUIRED COMPONENTS system)
  add_message_files(
    FILES
    grasp.msg
+   graspArr.msg
 
  )
 
@@ -55,6 +56,7 @@ LIBRARIES
    create_gripper_marker
 
 CATKIN_DEPENDS  message_runtime actionlib_msgs roscpp
+DEPENDS system_lib
 )
 
 ###########
@@ -62,8 +64,7 @@ CATKIN_DEPENDS  message_runtime actionlib_msgs roscpp
 ###########
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
-include_directories(
-  include
+include_directories(include
   ${catkin_INCLUDE_DIRS}
 )
 
@@ -142,5 +143,4 @@ add_dependencies( grasp_execution_server  grasp_execution ${grasp_execution_EXPO
 add_executable(grasp_execution_client src/grasp_execution_client.cpp)
 target_link_libraries(grasp_execution_client ${catkin_LIBRARIES})
 add_dependencies(grasp_execution_client ${grasp_execution_EXPORTED_TARGETS})
-
 
