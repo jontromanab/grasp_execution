@@ -1,6 +1,7 @@
 #include<grasp_execution/create_gripper_marker.h>
 
-
+CreateGripperMarker::CreateGripperMarker()
+{}
 
 visualization_msgs::Marker CreateGripperMarker::createGripperMeshMarker (double x, double y, double z, double rx, double ry, double rz, double rw, std::string meshLocation, int color)
 {
@@ -75,7 +76,7 @@ visualization_msgs::InteractiveMarker CreateGripperMarker::makeGripperMaker (geo
 {
   geometry_msgs::Pose new_pose = rotatePose(pose);
   visualization_msgs::InteractiveMarker iMarker;
-  iMarker.header.frame_id = "/world";
+  iMarker.header.frame_id = "/base_link";
   iMarker.pose = new_pose;
   iMarker.scale = 0.2;
   iMarker.name = "gripper_robotiq";

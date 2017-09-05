@@ -16,6 +16,7 @@ find_package(catkin REQUIRED COMPONENTS
   cmake_modules
   interactive_markers
   tf2
+
 )
 
 find_package (actionlib_msgs)
@@ -108,6 +109,8 @@ install(TARGETS grasp_execution create_gripper_marker
    RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
  )
 
+
+
 ## Mark cpp header files for installation
 install(DIRECTORY include/${PROJECT_NAME}/
    DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
@@ -143,4 +146,9 @@ add_dependencies( grasp_execution_server  grasp_execution ${grasp_execution_EXPO
 add_executable(grasp_execution_client src/grasp_execution_client.cpp)
 target_link_libraries(grasp_execution_client ${catkin_LIBRARIES})
 add_dependencies(grasp_execution_client ${grasp_execution_EXPORTED_TARGETS})
+
+
+add_executable(publish_gripper_marker src/publish_gripper_marker.cpp)
+target_link_libraries(publish_gripper_marker ${catkin_LIBRARIES})
+add_dependencies(publish_gripper_marker  create_gripper_marker ${grasp_execution_EXPORTED_TARGETS})
 

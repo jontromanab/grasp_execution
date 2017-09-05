@@ -36,18 +36,19 @@ void executeCB(const grasp_execution::ExecuteGraspGoalConstPtr &goal)
   ros::Rate r(1);
   bool success = true;
   ROS_INFO("%s: Executing grasp ", action_name_.c_str ());
-  ROS_INFO("Grasp pose: position.x = %f, position.y = %f, position.z = %f", goal->grasp.pose.position.x, goal->grasp.pose.position.y, goal->grasp.pose.position.z );
-  ROS_INFO("Orientation.x = %f, Orientation.y = %f, Orientation.z = %f, Orientation.w = %f", goal->grasp.pose.orientation.x, goal->grasp.pose.orientation.y, goal->grasp.pose.orientation.z,
-           goal->grasp.pose.orientation.w);
+  ROS_INFO("Grasp pose: position.x = %f, position.y = %f, position.z = %f", goal->grasps.grasps[0].pose.position.x, goal->grasps.grasps[0].pose.position.y, goal->grasps.grasps[0].pose.position.z );
+  ROS_INFO("Orientation.x = %f, Orientation.y = %f, Orientation.z = %f, Orientation.w = %f", goal->grasps.grasps[0].pose.orientation.x, goal->grasps.grasps[0].pose.orientation.y, goal->grasps.grasps[0].pose.orientation.z,
+           goal->grasps.grasps[0].pose.orientation.w);
 
-  grasp_execution::GraspExecution execute(nh_, goal->grasp);
+
+  grasp_execution::GraspExecution execute(nh_, goal->grasps);
   execute.goToGrasp();
   execute.pickUp();
   execute.place();
 
 
 
-  feedback_.pose = execute.currentPose();
+  feedback_.pose = execute.getCurrentPose();
   gs_.publishFeedback (feedback_);
 
   if(success)

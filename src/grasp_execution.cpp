@@ -3,6 +3,7 @@
 
 #include <Eigen/Eigen>
 #include <eigen_conversions/eigen_msg.h>
+#include<tf/transform_listener.h>
 
 
 
@@ -20,15 +21,21 @@ float joints_nominal[] = { -0.10114108404035793, -1.499387382710979, 1.597938454
 
 float joints_place[] = {-2.422389332448141, -1.5381997267352503, 1.956423282623291, -1.9831450621234339, -1.5961278120623987, -0.08470756212343389};
 
-GraspExecution::GraspExecution(ros::NodeHandle& node, grasp_execution::grasp grasp): spinner(1), group("manipulator"), group2("gripper")
+GraspExecution::GraspExecution(ros::NodeHandle& node, grasp_execution::graspArr grasps):nh_(node), spinner(1),
+  group("left_arm"), group2("left_gripper")
 {
-  grasp_ = grasp;
+  grasp_ = grasps.grasps[0];
   nh_ = node;
-  approach_pub_ = nh_.advertise<visualization_msgs::Marker> ("approach", 10);
-  grasp_waypoints_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("grasp_waypoints",10);
-  waypoints_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("pick_waypoints",10);
+  gripper_pub_ = nh_.advertise<pr2_controllers_msgs::Pr2GripperCommand>("/l_gripper_controller/command",10);
+  frame_id_ = grasps.header.frame_id;
+  table_center_ = grasps.table_center;
+  planning_scene_interface_.reset(new moveit::planning_interface::PlanningSceneInterface());
 
-  gripper_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("final_grasp",10);
+  //approach_pub_ = nh_.advertise<visualization_msgs::Marker> ("approach", 10);
+  //grasp_waypoints_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("grasp_waypoints",10);
+  //waypoints_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("pick_waypoints",10);
+
+ // gripper_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("final_grasp",10);
 
   grasp_wayPoints_.clear();
   pick_wayPoints_.clear();
@@ -126,6 +133,7 @@ bool GraspExecution::publishGripperMarkerMoveit()
 void GraspExecution::publishGripperMarker()
 {
   ROS_INFO("Publishing gripper marker");
+
   imServer.reset(new interactive_markers::InteractiveMarkerServer("gripper", "gripper", false));
   ros::Duration(0.1).sleep();
   imServer->applyChanges();
@@ -323,7 +331,7 @@ double GraspExecution::executeWayPoints(std::vector<geometry_msgs::Pose> waypoin
                                                  trajectory_msg, false);
   // The trajectory needs to be modified so it will include velocities as well.
   // First to create a RobotTrajectory object
-  robot_trajectory::RobotTrajectory rt(group.getCurrentState()->getRobotModel(), "manipulator");
+  robot_trajectory::RobotTrajectory rt(group.getCurrentState()->getRobotModel(), "left_arm");
   // Second get a RobotTrajectory from trajectory
   rt.setRobotTrajectoryMsg(*group.getCurrentState(), trajectory_msg);
   // Thrid create a IterativeParabolicTimeParameterization object
@@ -384,11 +392,8 @@ bool GraspExecution::executeJointTargetPlace()
 
 }
 
-
-
 bool GraspExecution::openGripper()
 {
-
   ROS_INFO("opening gripper");
   group2.setJointValueTarget("robotiq_85_left_knuckle_joint", 0.01);
   group2.move();
@@ -434,18 +439,233 @@ bool GraspExecution::generatePickWayPoints()
   }
 }
 
-geometry_msgs::Pose GraspExecution::currentPose()
+geometry_msgs::Pose GraspExecution::getCurrentPose()
 {
   geometry_msgs::PoseStamped poseStamped_curr = group.getCurrentPose();
-  geometry_msgs::Pose pose_curr;;
+  geometry_msgs::Pose pose_curr;
   pose_curr = poseStamped_curr.pose;
   return pose_curr;
 }
 
 
+void sq_create_transform(const geometry_msgs::Pose& pose, Eigen::Affine3f& transform)
+{
+  transform = Eigen::Affine3f::Identity();
+  Eigen::Quaternionf q(pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z);
+  q.normalize();
+  transform.translation()<<pose.position.x, pose.position.y, pose.position.z;
+  transform.rotate(q);
+}
+
+
+void transformFrame(const std::string& input_frame, const std::string& output_frame, const geometry_msgs::Pose &pose_in, geometry_msgs::Pose &pose_out)
+{
+  tf::TransformListener listener;
+  tf::StampedTransform transform;
+    try
+    {
+      listener.waitForTransform(input_frame, output_frame, ros::Time(0), ros::Duration(3.0));
+      listener.lookupTransform(input_frame, output_frame, ros::Time(0), transform);
+      geometry_msgs::Pose inter_pose;
+      inter_pose.position.x = transform.getOrigin().x();
+      inter_pose.position.y = transform.getOrigin().y();
+      inter_pose.position.z = transform.getOrigin().z();
+      inter_pose.orientation.x = transform.getRotation().getX();
+      inter_pose.orientation.y = transform.getRotation().getY();
+      inter_pose.orientation.z = transform.getRotation().getZ();
+      inter_pose.orientation.w = transform.getRotation().getW();
+      Eigen::Affine3d transform_in_eigen;
+      tf::poseMsgToEigen(inter_pose, transform_in_eigen);
+      Eigen::Affine3f pose_in_eigen;
+      sq_create_transform(pose_in, pose_in_eigen);
+      tf::poseEigenToMsg( transform_in_eigen * pose_in_eigen.cast<double>(), pose_out );
+    }
+    catch(tf::TransformException ex)
+    {
+      ROS_ERROR("%s",ex.what());
+      ros::Duration(1.0).sleep();
+    }
+  }
+
+void findApproachPoseFromDir(const geometry_msgs::Pose &pose_in, const geometry_msgs::Vector3 &dir, geometry_msgs::Pose &pose_out)
+{
+  pose_out.orientation = pose_in.orientation;
+  pose_out.position.x = pose_in.position.x + dir.x;
+  pose_out.position.y = pose_in.position.y + dir.y;
+  pose_out.position.z = pose_in.position.z + dir.z;
+}
+
+void GraspExecution::createTableCollisionObject()
+{
+  //moveit_msgs::CollisionObject collision_object;
+  collision_object_.header.frame_id = frame_id_;
+  collision_object_.id = "table";
+
+  /* Define a table to add to the world. */
+  shape_msgs::SolidPrimitive primitive;
+  primitive.type = primitive.BOX;
+  primitive.dimensions.resize(3);
+  primitive.dimensions[0] = 1.0;
+  primitive.dimensions[1] = 1.5;
+  primitive.dimensions[2] = 0.005;
+
+  /* A pose for the box (specified relative to frame_id) */
+  geometry_msgs::Pose box_pose;
+  box_pose.orientation.w = 1.0;
+  box_pose.position.x =  table_center_.x;
+  box_pose.position.y = table_center_.y;
+  box_pose.position.z =  table_center_.z;
+
+  collision_object_.primitives.push_back(primitive);
+  collision_object_.primitive_poses.push_back(box_pose);
+  collision_object_.operation = collision_object_.ADD;
+
+  std::vector<moveit_msgs::CollisionObject> collision_objects;
+  collision_objects.push_back(collision_object_);
+  ROS_INFO("Add table into the world");
+  planning_scene_interface_->addCollisionObjects(collision_objects);
+  sleep(1.0);
+}
+
+void GraspExecution::removeTableCollisionObject()
+{
+  ROS_INFO("Removing the object from the world");
+  std::vector<std::string> object_ids;
+  object_ids.push_back(collision_object_.id);
+  planning_scene_interface_->removeCollisionObjects(object_ids);
+  sleep(1.0);
+}
+
+void GraspExecution::openPR2Gripper()
+{
+  pr2_controllers_msgs::Pr2GripperCommand command;
+  command.position = 0.6;
+  command.max_effort = 50.0;
+  gripper_pub_.publish(command);
+  ROS_INFO("Openning PR2 gripper");
+}
+
+void GraspExecution::closePR2Gripper()
+{
+  pr2_controllers_msgs::Pr2GripperCommand command;
+  command.position = 0.0;
+  command.max_effort = 50.0;
+  gripper_pub_.publish(command);
+  ROS_INFO("Closing PR2 gripper");
+}
+
+void GraspExecution::closePR2GripperByValue(double angle)
+{
+  pr2_controllers_msgs::Pr2GripperCommand command;
+  command.position = angle;
+  command.max_effort = 50.0;
+  gripper_pub_.publish(command);
+  std::cout<<"Angle is: "<<angle<<std::endl;
+  ROS_INFO("Closing PR2 gripper by value");
+}
+
+void GraspExecution::moveToDrop()
+{
+  ROS_INFO("Going to DROP position");
+  ros::AsyncSpinner spinner2(1);
+  spinner2.start();
+  moveit::planning_interface::MoveGroup group("left_arm");
+  std::map<std::string, double> joints2;
+  joints2["l_shoulder_pan_joint"] = 1.6223409310494041;
+  joints2["l_shoulder_lift_joint"] =  -0.017794165752460955;
+  joints2["l_upper_arm_roll_joint"] = 2.124824334685462;
+  joints2["l_elbow_flex_joint"] =  -1.8033044818093558;
+  joints2["l_forearm_roll_joint"] =  1.6691989902822668;
+  joints2["l_wrist_flex_joint"] =  -1.1098823343873687;
+  joints2["l_wrist_roll_joint"] = -3.3395094272054027;
+  group.setJointValueTarget(joints2);
+  group.move();
+}
+
+void GraspExecution::moveToHome()
+{
+  ROS_INFO("Going to HOME position");
+  ros::AsyncSpinner spinner2(1);
+  spinner2.start();
+  moveit::planning_interface::MoveGroup group("left_arm");
+  std::map<std::string, double> joints;
+  joints["l_shoulder_pan_joint"] = 0.965007062862802;
+  joints["l_shoulder_lift_joint"] =  0.37371566744795714;
+  joints["l_upper_arm_roll_joint"] = -0.01618789723951597;
+  joints["l_elbow_flex_joint"] = -1.7464098397213954;
+  joints["l_forearm_roll_joint"] =   2.1857378980573445;
+  joints["l_wrist_flex_joint"] =  -1.6045068808841734;
+  joints["l_wrist_roll_joint"] = -2.9733118297097265;
+  group.setJointValueTarget(joints);
+  group.move();
+}
+
+void GraspExecution::moveToApproach()
+{
+  geometry_msgs::Pose approach_pose;
+  geometry_msgs::Pose trans_pose;
+
+  ros::AsyncSpinner spinner2(1);
+  spinner2.start();
+  moveit::planning_interface::MoveGroup group("left_arm");
+  std::cout<<"frame_id is: "<<frame_id_<<std::endl;
+  std::cout<<"plannin_frame is: "<<group.getPlanningFrame()<<std::endl;
+  std::cout<<"grasp pose: "<<grasp_.pose.position.x<<" "<<grasp_.pose.position.y<<" "<<grasp_.pose.position.z<<std::endl;
+  findApproachPoseFromDir(grasp_.pose, grasp_.approach, approach_pose);
+  transformFrame(group.getPlanningFrame(), frame_id_ ,approach_pose, trans_pose);
+  std::cout<<"trans pose: "<<trans_pose.position.x<<" "<<trans_pose.position.y<<" "<<trans_pose.position.z<<std::endl;
+
+
+  group.setPlannerId("RRTkConfigDefault");
+  group.setStartStateToCurrentState ();
+  group.setPoseTarget(trans_pose);
+  moveit::planning_interface::MoveGroup::Plan my_plan;
+  bool success = group.plan(my_plan);
+  group.move();
+  ROS_INFO("Reference frame: %s", group.getPlanningFrame().c_str());
+  ROS_INFO("Reference frame: %s", group.getEndEffectorLink().c_str());
+}
+
+
+void GraspExecution::generateGraspWayPoints(std::vector<geometry_msgs::Pose> &way)
+{
+  geometry_msgs::Pose grasp_trans_pose;
+  transformFrame(group.getPlanningFrame(), frame_id_ ,grasp_.pose, grasp_trans_pose);
+  geometry_msgs::Pose approach_trans_pose;
+  geometry_msgs::Pose approach_pose;
+  findApproachPoseFromDir(grasp_.pose, grasp_.approach, approach_pose);
+  transformFrame(group.getPlanningFrame(), frame_id_ ,grasp_.pose, approach_trans_pose);
+  way.push_back(approach_trans_pose);
+  geometry_msgs::Pose mid_pose;
+  mid_pose.orientation = approach_trans_pose.orientation;
+  mid_pose.position.x = (approach_trans_pose.position.x + grasp_trans_pose.position.x)/2.0;
+  mid_pose.position.y = (approach_trans_pose.position.y + grasp_trans_pose.position.y)/2.0;
+  mid_pose.position.z = (approach_trans_pose.position.z + grasp_trans_pose.position.z)/2.0;
+  way.push_back(mid_pose);
+  way.push_back(grasp_trans_pose);
+}
+
+void GraspExecution::moveToRetreat()
+{
+  ros::AsyncSpinner spinner2(1);
+  spinner2.start();
+  moveit::planning_interface::MoveGroup group("left_arm");
+  group.setPlannerId("RRTkConfigDefault");
+  group.setStartStateToCurrentState ();
+  geometry_msgs::Pose pose_now = getCurrentPose();
+  Eigen::Affine3d pose_now_eigen;
+  tf::poseMsgToEigen(pose_now, pose_now_eigen);
+  Eigen::Affine3d retreating = pose_now_eigen.translate(-0.13*Eigen::Vector3d::UnitX());
+  ROS_INFO("Retreating");
+  group.setPoseTarget(retreating);
+  moveit::planning_interface::MoveGroup::Plan my_plan;
+  bool success = group.plan(my_plan);
+  group.move();
+}
+
 bool GraspExecution::goToGrasp()
 {
-  executeJointTargetPreNominal();
+  /*executeJointTargetPreNominal();
   //executeJointTargetNominal();
   openGripper();
   publishApproachMarker();
@@ -460,7 +680,20 @@ bool GraspExecution::goToGrasp()
     executePoseGrasp(grasp_);
   }
 
-  closeGripper();
+  closeGripper();*/
+  createTableCollisionObject();
+  openPR2Gripper();
+  ros::Duration(2).sleep();
+  moveToHome();
+  moveToApproach();
+
+  std::vector<geometry_msgs::Pose> waypoints;
+  generateGraspWayPoints(waypoints);
+  double val = executeWayPoints(waypoints);
+
+  removeTableCollisionObject();
+  closePR2GripperByValue(grasp_.angle);
+  ros::Duration(5).sleep();
 }
 
 bool GraspExecution::pickUp()
@@ -468,18 +701,21 @@ bool GraspExecution::pickUp()
   //generatePickWayPoints();
   //publishPickWayPointsMarker();
   ROS_INFO("Picking up");
+  moveToRetreat();
   //executeWayPoints(pick_wayPoints_);
-  executePickPose();
+  //executePickPose();
 
 
 }
 
 bool GraspExecution::place()
 {
-  executeJointTargetPlace();
-  openGripper();
-  executeJointTargetPreNominal();
-  spinner.stop();
+  ROS_INFO("Placing");
+  moveToDrop();
+  openPR2Gripper();
+  moveToHome();
+  //closePR2Gripper();
+  ros::Duration(2).sleep();
 }
 
 

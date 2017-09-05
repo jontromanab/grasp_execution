@@ -4,6 +4,7 @@
 #include<ros/ros.h>
 
 #include <grasp_execution/grasp.h>
+#include<grasp_execution/graspArr.h>
 #include <visualization_msgs/Marker.h>
 #include<visualization_msgs/MarkerArray.h>
 #include<visualization_msgs/InteractiveMarker.h>
@@ -14,6 +15,9 @@
 #include <moveit/trajectory_processing/iterative_time_parameterization.h>
 
 #include<grasp_execution/create_gripper_marker.h>
+#include<pr2_controllers_msgs/Pr2GripperCommand.h>
+
+#include <moveit/planning_scene_interface/planning_scene_interface.h>
 
 
 
@@ -22,11 +26,11 @@ namespace grasp_execution {
 class GraspExecution{
 
 public:
-  GraspExecution(ros::NodeHandle& node, grasp_execution::grasp grasp);
+  GraspExecution(ros::NodeHandle& node, grasp_execution::graspArr grasps);
   //~GraspExecution();
 
 
-  geometry_msgs::Pose currentPose(); //Returns current pose of the end-effector, needed in action feedback
+  geometry_msgs::Pose getCurrentPose(); //Returns current pose of the end-effector, needed in action feedback
 
 
   //main grasp execution pipeline
@@ -49,7 +53,8 @@ private:
 
   boost::shared_ptr<interactive_markers::InteractiveMarkerServer> imServer;
 
-  ros::Publisher gripper_pub_;
+  //ros::Publisher gripper_pub_;
+  std::string frame_id_;
 
 
   ros::AsyncSpinner spinner;
@@ -83,6 +88,23 @@ private:
   bool executeJointTargetPlace();//Executing joint target place
   bool openGripper(); //Opening the gripper
   bool closeGripper(); //Closing the gripper
+
+
+  //New Functions
+  boost::scoped_ptr<moveit::planning_interface::PlanningSceneInterface> planning_scene_interface_;
+  moveit_msgs::CollisionObject collision_object_;
+  ros::Publisher gripper_pub_;
+  geometry_msgs::Vector3 table_center_;
+  void createTableCollisionObject();
+  void removeTableCollisionObject();
+  void openPR2Gripper();
+  void closePR2Gripper();
+  void closePR2GripperByValue(double angle);
+  void moveToHome();
+  void moveToApproach();
+  void generateGraspWayPoints(std::vector<geometry_msgs::Pose>& way);
+  void moveToRetreat();
+  void moveToDrop();
 
 
 
