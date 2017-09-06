@@ -539,7 +539,7 @@ void GraspExecution::removeTableCollisionObject()
 void GraspExecution::openPR2Gripper()
 {
   pr2_controllers_msgs::Pr2GripperCommand command;
-  command.position = 0.6;
+  command.position = 0.08;
   command.max_effort = 50.0;
   gripper_pub_.publish(command);
   ROS_INFO("Openning PR2 gripper");
@@ -557,7 +557,7 @@ void GraspExecution::closePR2Gripper()
 void GraspExecution::closePR2GripperByValue(double angle)
 {
   pr2_controllers_msgs::Pr2GripperCommand command;
-  command.position = angle;
+  command.position = angle/10.0;
   command.max_effort = 50.0;
   gripper_pub_.publish(command);
   std::cout<<"Angle is: "<<angle<<std::endl;
@@ -571,13 +571,13 @@ void GraspExecution::moveToDrop()
   spinner2.start();
   moveit::planning_interface::MoveGroup group("left_arm");
   std::map<std::string, double> joints2;
-  joints2["l_shoulder_pan_joint"] = 1.6223409310494041;
-  joints2["l_shoulder_lift_joint"] =  -0.017794165752460955;
-  joints2["l_upper_arm_roll_joint"] = 2.124824334685462;
-  joints2["l_elbow_flex_joint"] =  -1.8033044818093558;
-  joints2["l_forearm_roll_joint"] =  1.6691989902822668;
-  joints2["l_wrist_flex_joint"] =  -1.1098823343873687;
-  joints2["l_wrist_roll_joint"] = -3.3395094272054027;
+  joints2["l_shoulder_pan_joint"] = 1.362511126818978;
+  joints2["l_shoulder_lift_joint"] =  -0.34946162734450237;
+  joints2["l_upper_arm_roll_joint"] = 1.4417106915622417;
+  joints2["l_elbow_flex_joint"] =  -0.802871572171303;
+  joints2["l_forearm_roll_joint"] =  1.4538708363284372;
+  joints2["l_wrist_flex_joint"] =  -1.9956640712296867;
+  joints2["l_wrist_roll_joint"] =  -34.02836370324722;
   group.setJointValueTarget(joints2);
   group.move();
 }
@@ -647,7 +647,7 @@ void GraspExecution::generateGraspWayPoints(std::vector<geometry_msgs::Pose> &wa
 
 void GraspExecution::moveToRetreat()
 {
-  ros::AsyncSpinner spinner2(1);
+  /*ros::AsyncSpinner spinner2(1);
   spinner2.start();
   moveit::planning_interface::MoveGroup group("left_arm");
   group.setPlannerId("RRTkConfigDefault");
@@ -655,12 +655,19 @@ void GraspExecution::moveToRetreat()
   geometry_msgs::Pose pose_now = getCurrentPose();
   Eigen::Affine3d pose_now_eigen;
   tf::poseMsgToEigen(pose_now, pose_now_eigen);
-  Eigen::Affine3d retreating = pose_now_eigen.translate(-0.13*Eigen::Vector3d::UnitX());
+  //Eigen::Affine3d retreating = pose_now_eigen.translate(-0.13*Eigen::Vector3d::UnitX());
   ROS_INFO("Retreating");
   group.setPoseTarget(retreating);
   moveit::planning_interface::MoveGroup::Plan my_plan;
   bool success = group.plan(my_plan);
-  group.move();
+  group.move();*/
+  std::vector<geometry_msgs::Pose> waypoints;
+  geometry_msgs::Pose curr_pose = getCurrentPose();
+  waypoints.push_back(curr_pose);
+  geometry_msgs::Pose new_pose = curr_pose;
+  new_pose.position.z = curr_pose.position.z + 0.1;
+  waypoints.push_back(new_pose); 
+  double val = executeWayPoints(waypoints);
 }
 
 bool GraspExecution::goToGrasp()

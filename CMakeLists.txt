@@ -147,6 +147,10 @@ add_executable(grasp_execution_client src/grasp_execution_client.cpp)
 target_link_libraries(grasp_execution_client ${catkin_LIBRARIES})
 add_dependencies(grasp_execution_client ${grasp_execution_EXPORTED_TARGETS})
 
+add_executable(grasp_execution_client_multiple src/grasp_execution_client_multiple.cpp)
+target_link_libraries(grasp_execution_client_multiple ${catkin_LIBRARIES})
+add_dependencies(grasp_execution_client_multiple ${grasp_execution_EXPORTED_TARGETS})
+
 
 add_executable(publish_gripper_marker src/publish_gripper_marker.cpp)
 target_link_libraries(publish_gripper_marker ${catkin_LIBRARIES})
