@@ -7,4 +7,7 @@ Action server which will accept grasp_execution/grasp by an action client and ex
 
 ***Now added functions specifically for PR2 robots. Please look at relatively new commits***
 
+
+![untitled](https://user-images.githubusercontent.com/3790876/31592062-615fabc8-b1da-11e7-9d1f-c8d7e4876cf4.png)
+
 The grasp_execution_client is just a test file. In all the grasping algorithm packages, there should be a client which can call the grasp_execution_server to execute a single grasp in turn
